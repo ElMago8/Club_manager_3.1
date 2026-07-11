@@ -160,9 +160,8 @@ function devServerFnErrorLogger() {
 }
 
 export default defineConfig(({ command }) => {
-  // Use Cloudflare Workers plugin for builds (produces worker output)
-  // Skip for dev server (command=serve) since workerd runtime isn't available
-  const useCloudflare = command === "build";
+  // Cloudflare Workers disabled: Hostinger uses Node.js runtime
+  const useCloudflare = false;
 
   return {
     server: {
