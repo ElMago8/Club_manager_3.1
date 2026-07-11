@@ -1,6 +1,5 @@
 node_modules/
 server/node_modules/
-dist/
 server/dist/
 server/prisma/*.db
 server/prisma/*.db-journal
