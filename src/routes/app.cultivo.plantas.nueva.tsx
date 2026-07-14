@@ -123,7 +123,7 @@ function NewPlantPage() {
           const firstBed = nextBeds.find(hasAvailablePlantSlot);
           setForm((current) => ({
             ...current,
-            bedId: firstBed?.id ?? "",
+            bedId: firstBed ? (firstBed.tipo === "clonador" ? `clonador-${firstBed.id}` : `camilla-${firstBed.id}`) : "",
             geneticsId: nextGenetics[0]?.id ?? "none",
           }));
         }
@@ -144,7 +144,9 @@ function NewPlantPage() {
     event.preventDefault();
     setError("");
 
-    const selectedBed = beds.find((bed) => bed.id === form.bedId);
+    const selectedBed = beds.find((bed) =>
+      (bed.tipo === "clonador" ? `clonador-${bed.id}` : `camilla-${bed.id}`) === form.bedId
+    );
     const bedPosition = Number(form.bedPosition);
     const potSizeLiters = form.potSizeLiters ? Number(form.potSizeLiters) : undefined;
 
@@ -279,10 +281,11 @@ function NewPlantPage() {
                     const camillas = beds.filter((b) => b.tipo !== "clonador");
                     const clonadores = beds.filter((b) => b.tipo === "clonador");
                     const renderItem = (bed: GrowBed) => {
-                      const isCurrentBed = editId && bed.id === form.bedId;
+                      const bedValue = bed.tipo === "clonador" ? `clonador-${bed.id}` : `camilla-${bed.id}`;
+                      const isCurrentBed = editId && bedValue === form.bedId;
                       const isFull = !hasAvailablePlantSlot(bed) && !isCurrentBed;
                       return (
-                        <SelectItem key={bed.id} value={bed.id} disabled={isFull}>
+                        <SelectItem key={bedValue} value={bedValue} disabled={isFull}>
                           {bed.name} - {bed.currentPlants}/{bed.maxPlants}{isFull ? " - Llena" : ""}
                         </SelectItem>
                       );

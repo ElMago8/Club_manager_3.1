@@ -225,7 +225,11 @@ function mapApiPlant(plant: ApiPlant): Plant {
       plant.bed?.roomId ??
       (plant.camilla?.salaCultivoId ? String(plant.camilla.salaCultivoId) : undefined) ??
       (plant.clonador?.salaCultivoId ? String(plant.clonador.salaCultivoId) : "room-sin-asignar"),
-    bedId: plant.bedId ?? String(plant.camillaId ?? plant.clonadorId ?? ""),
+    bedId: plant.camillaId != null
+      ? `camilla-${plant.camillaId}`
+      : plant.clonadorId != null
+        ? `clonador-${plant.clonadorId}`
+        : (plant.bedId ?? ""),
     bedPosition: plant.bedPosition ?? plant.posicionCamilla ?? plant.posicionClonador ?? 0,
     batchId: plant.batchId ?? (plant.loteCultivoId ? String(plant.loteCultivoId) : undefined),
     geneticsId: plant.geneticsId ?? (plant.geneticaId ? String(plant.geneticaId) : undefined),
@@ -246,11 +250,20 @@ function mapApiPlant(plant: ApiPlant): Plant {
   };
 }
 
+function parseBedId(bedId: string | undefined): { camillaId?: number; clonadorId?: number } {
+  if (!bedId) return {};
+  if (bedId.startsWith("clonador-")) return { clonadorId: Number(bedId.slice("clonador-".length)) };
+  if (bedId.startsWith("camilla-")) return { camillaId: Number(bedId.slice("camilla-".length)) };
+  return { camillaId: Number(bedId) };
+}
+
 function toApiPlantPayload(payload: CreatePlantPayload | UpdatePlantPayload) {
+  const { camillaId, clonadorId } = parseBedId(payload.bedId);
   return {
     codigoPlanta: payload.internalCode,
     nombrePlanta: payload.plantName,
-    camillaId: payload.bedId ? Number(payload.bedId) : undefined,
+    camillaId,
+    clonadorId,
     posicionCamilla: payload.bedPosition,
     loteCultivoId: payload.batchId && /^\d+$/.test(payload.batchId) ? Number(payload.batchId) : undefined,
     geneticaId: payload.geneticsId ? Number(payload.geneticsId) : undefined,
