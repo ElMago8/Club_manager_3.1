@@ -6,10 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { getGenetics } from "@/services/geneticsService";
-import { getGrowBeds } from "@/services/growBedService";
+import { getClonadores, getGrowBeds } from "@/services/growBedService";
 import { getMotherPlants } from "@/services/motherPlantService";
 import { createPlant, getPlantById, updatePlant } from "@/services/plantService";
 import type { Genetics, GrowBed, MotherPlant, PlantOrigin, PlantStage, PlantStatus } from "@/types/cultivation";
@@ -82,11 +82,13 @@ function NewPlantPage() {
     setLoading(true);
     async function loadOptions() {
       try {
-        const [nextBeds, nextGenetics, nextMothers] = await Promise.all([
+        const [camillas, clonadores, nextGenetics, nextMothers] = await Promise.all([
           getGrowBeds(),
+          getClonadores(),
           getGenetics(),
           getMotherPlants(),
         ]);
+        const nextBeds = [...camillas, ...clonadores];
 
         setBeds(nextBeds);
         setGenetics(nextGenetics);
@@ -147,7 +149,7 @@ function NewPlantPage() {
     const potSizeLiters = form.potSizeLiters ? Number(form.potSizeLiters) : undefined;
 
     if (!selectedBed) {
-      setError("Selecciona una camilla.");
+      setError("Selecciona una camilla o clonador de destino.");
       return;
     }
 
@@ -273,15 +275,35 @@ function NewPlantPage() {
               <Select value={form.bedId} onValueChange={(bedId) => setForm({ ...form, bedId })}>
                 <SelectTrigger><SelectValue placeholder="Selecciona destino" /></SelectTrigger>
                 <SelectContent>
-                  {beds.map((bed) => {
-                    const isCurrentBed = editId && bed.id === form.bedId;
-                    const isFull = !hasAvailablePlantSlot(bed) && !isCurrentBed;
+                  {(() => {
+                    const camillas = beds.filter((b) => b.tipo !== "clonador");
+                    const clonadores = beds.filter((b) => b.tipo === "clonador");
+                    const renderItem = (bed: GrowBed) => {
+                      const isCurrentBed = editId && bed.id === form.bedId;
+                      const isFull = !hasAvailablePlantSlot(bed) && !isCurrentBed;
+                      return (
+                        <SelectItem key={bed.id} value={bed.id} disabled={isFull}>
+                          {bed.name} - {bed.currentPlants}/{bed.maxPlants}{isFull ? " - Llena" : ""}
+                        </SelectItem>
+                      );
+                    };
                     return (
-                    <SelectItem key={bed.id} value={bed.id} disabled={isFull}>
-                      {bed.name} - {bed.currentPlants}/{bed.maxPlants}{isFull ? " - Llena" : ""}
-                    </SelectItem>
+                      <>
+                        {camillas.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel>Camillas</SelectLabel>
+                            {camillas.map(renderItem)}
+                          </SelectGroup>
+                        )}
+                        {clonadores.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel>Clonadores</SelectLabel>
+                            {clonadores.map(renderItem)}
+                          </SelectGroup>
+                        )}
+                      </>
                     );
-                  })}
+                  })()}
                 </SelectContent>
               </Select>
             </div>
