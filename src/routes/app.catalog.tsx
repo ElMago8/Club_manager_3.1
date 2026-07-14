@@ -22,10 +22,12 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,6 +87,7 @@ import type {
   TipoProducto,
   TipoUbicacion,
   UbicacionStock,
+  UpdateProductoPayload,
   UnidadMedida,
 } from "@/types/products";
 import { format } from "date-fns";
@@ -292,22 +295,26 @@ function TabProductos({
   };
 
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Producto | null>(null);
   const [form, setForm] = useState<ProductoForm>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [confirmInactivar, setConfirmInactivar] = useState<Producto | null>(null);
+  const [confirmEliminar, setConfirmEliminar] = useState<Producto | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return productos
       .filter((p) => tiposPermitidos.includes(p.tipoProducto))
+      .filter((p) => showInactive || p.estado === "activo")
       .filter(
         (p) =>
           p.nombre.toLowerCase().includes(q) ||
           p.codigoProducto.toLowerCase().includes(q) ||
           (p.categoria?.nombre.toLowerCase().includes(q) ?? false),
       );
-  }, [productos, search, tiposPermitidos]);
+  }, [productos, search, tiposPermitidos, showInactive]);
 
   function openCreate() {
     setEditTarget(null);
@@ -365,13 +372,35 @@ function TabProductos({
     }
   }
 
-  async function handleInactivate(p: Producto) {
+  async function handleInactivar(p: Producto) {
+    setConfirmInactivar(null);
     try {
-      await deleteProducto(p.id);
-      toast.success(`${p.nombre} ${p.estado === "activo" ? "inactivado" : "eliminado"}`);
+      await updateProducto(p.id, { estado: "inactivo" } as UpdateProductoPayload);
+      toast.success(`${p.nombre} inactivado`);
       onRefresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : `No se pudo inactivar el ${labelEntidad}.`);
+    }
+  }
+
+  async function handleActivar(p: Producto) {
+    try {
+      await updateProducto(p.id, { estado: "activo" } as UpdateProductoPayload);
+      toast.success(`${p.nombre} reactivado`);
+      onRefresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : `No se pudo reactivar el ${labelEntidad}.`);
+    }
+  }
+
+  async function handleEliminar(p: Producto) {
+    setConfirmEliminar(null);
+    try {
+      await deleteProducto(p.id);
+      toast.success(`${p.nombre} eliminado definitivamente`);
+      onRefresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : `No se pudo eliminar el ${labelEntidad}.`);
     }
   }
 
@@ -379,6 +408,47 @@ function TabProductos({
 
   return (
     <div className="space-y-4">
+      {/* Modal confirmar inactivar */}
+      <Dialog open={Boolean(confirmInactivar)} onOpenChange={(o) => { if (!o) setConfirmInactivar(null); }}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Inactivar {labelEntidad}</DialogTitle>
+            <DialogDescription className="pt-1">
+              ¿Confirmás que querés inactivar{" "}
+              <span className="font-semibold text-foreground">{confirmInactivar?.nombre}</span>?
+              Podrás reactivarlo más adelante.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setConfirmInactivar(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => { if (confirmInactivar) void handleInactivar(confirmInactivar); }}>
+              Sí, inactivar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal confirmar eliminación definitiva */}
+      <Dialog open={Boolean(confirmEliminar)} onOpenChange={(o) => { if (!o) setConfirmEliminar(null); }}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Eliminar definitivamente</DialogTitle>
+            <DialogDescription className="pt-1">
+              Estás por eliminar permanentemente{" "}
+              <span className="font-semibold text-foreground">{confirmEliminar?.nombre}</span>.
+              <br />
+              Esta acción <span className="font-semibold">no se puede deshacer</span>.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setConfirmEliminar(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => { if (confirmEliminar) void handleEliminar(confirmEliminar); }}>
+              Sí, eliminar para siempre
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex items-center justify-between gap-3">
         <div className="relative max-w-xs flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -389,10 +459,19 @@ function TabProductos({
             className="pl-8"
           />
         </div>
-        <Button onClick={openCreate} className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          {labelNuevo}
-        </Button>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+            <Checkbox
+              checked={showInactive}
+              onCheckedChange={(v) => setShowInactive(!!v)}
+            />
+            Mostrar inactivos
+          </label>
+          <Button onClick={openCreate} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            {labelNuevo}
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-lg border border-border">
@@ -448,13 +527,29 @@ function TabProductos({
                           Editar
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => handleInactivate(p)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {p.estado === "activo" ? "Inactivar" : "Eliminar"}
-                        </DropdownMenuItem>
+                        {p.estado === "activo" ? (
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setConfirmInactivar(p)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Inactivar
+                          </DropdownMenuItem>
+                        ) : (
+                          <>
+                            <DropdownMenuItem onClick={() => void handleActivar(p)}>
+                              <PackageCheck className="mr-2 h-4 w-4" />
+                              Reactivar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setConfirmEliminar(p)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Eliminar definitivamente
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
