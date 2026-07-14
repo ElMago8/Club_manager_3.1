@@ -543,15 +543,11 @@ function MemberFormSheet({ target, onClose, onSaved, onDeleted, onError }: FormS
     setDocuments([]);
     setPendingDocs({});
     if (editMember) {
-      if (editMember.documents) {
-        setDocuments(editMember.documents.filter((d) => d.estado !== "inactivo"));
-      } else {
-        setDocLoading(true);
-        getMemberDocuments(editMember.id)
-          .then((docs) => setDocuments(docs.filter((d) => d.estado !== "inactivo")))
-          .catch(() => setDocuments([]))
-          .finally(() => setDocLoading(false));
-      }
+      setDocLoading(true);
+      getMemberDocuments(editMember.id)
+        .then((docs) => setDocuments(docs.filter((d) => d.estado !== "inactivo")))
+        .catch(() => setDocuments([]))
+        .finally(() => setDocLoading(false));
     }
   }, [target]);
 
@@ -980,6 +976,7 @@ function DocumentChecklist({ socioId, documents, onDocumentsChange, onError }: D
   const [activeType, setActiveType] = useState<DocumentType | null>(null);
   const [rowForm, setRowForm] = useState<DocRowForm>(emptyRowForm("credencial"));
   const [saving, setSaving] = useState(false);
+  const [confirmDeleteDoc, setConfirmDeleteDoc] = useState<MemberDocument | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function openCreate(tipo: DocumentType) {
@@ -1041,6 +1038,33 @@ function DocumentChecklist({ socioId, documents, onDocumentsChange, onError }: D
 
   return (
     <div className="space-y-1.5">
+      <Dialog open={Boolean(confirmDeleteDoc)} onOpenChange={(o) => { if (!o) setConfirmDeleteDoc(null); }}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Quitar documento</DialogTitle>
+            <DialogDescription className="pt-1">
+              ¿Confirmás que querés quitar{" "}
+              <span className="font-semibold text-foreground">
+                {confirmDeleteDoc ? DOC_TYPE_LABEL[confirmDeleteDoc.tipoDocumento] : ""}
+              </span>?
+              Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setConfirmDeleteDoc(null)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (confirmDeleteDoc) void handleDelete(confirmDeleteDoc);
+                setConfirmDeleteDoc(null);
+              }}
+            >
+              Sí, quitar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {ALL_DOC_TYPES.map((tipo) => {
         const doc = getDocForType(documents, tipo);
         const effectiveStatus = doc ? computeDocStatus(doc) : null;
@@ -1091,6 +1115,18 @@ function DocumentChecklist({ socioId, documents, onDocumentsChange, onError }: D
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
+              ) : null}
+
+              {/* Botón quitar (solo si hay doc y no está editando) */}
+              {doc && !isEditing ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px] text-destructive hover:text-destructive shrink-0"
+                  onClick={() => setConfirmDeleteDoc(doc)}
+                >
+                  Quitar
+                </Button>
               ) : null}
 
               {/* Botón editar / cargar */}
@@ -1346,7 +1382,7 @@ function PendingDocChecklist({ pending, onChange }: { pending: PendingDocMap; on
                   </>
                 )}
                 <div className="flex gap-2">
-                  <Button size="sm" className="flex-1 h-7 text-xs" onClick={handleSave}>En cola</Button>
+                  <Button size="sm" className="flex-1 h-7 text-xs" onClick={handleSave}>Guardar</Button>
                   {entry && (
                     <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive"
                       onClick={() => handleRemove(tipo)}>Quitar</Button>
