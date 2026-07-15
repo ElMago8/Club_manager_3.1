@@ -62,6 +62,37 @@ export type CreateOperationalTaskPayload = Omit<OperationalTask, "id" | "bed" | 
 
 const mockTasks: OperationalTask[] = [];
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapApiTask(t: any): OperationalTask {
+  return {
+    id: String(t.id),
+    title: t.titulo ?? t.title ?? "",
+    description: t.descripcion ?? t.description ?? null,
+    taskType: (t.tipo ?? t.taskType ?? "custom") as OperationalTaskType,
+    priority: (t.prioridad ?? t.priority ?? "medium") as OperationalTaskPriority,
+    status: (t.estado ?? t.status ?? "pending") as OperationalTaskStatus,
+    dueDate: t.fechaProgramada ? String(t.fechaProgramada).slice(0, 10) : (t.dueDate ?? ""),
+    dueTime: t.dueTime ?? null,
+    assignedToName: t.assignedToName ?? null,
+    roomId: t.salaCultivoId != null ? String(t.salaCultivoId) : (t.roomId ?? null),
+    bedId: t.camillaId != null ? String(t.camillaId) : (t.bedId ?? null),
+    plantId: t.plantaId != null ? String(t.plantaId) : (t.plantId ?? null),
+    batchId: t.loteCultivoId != null ? String(t.loteCultivoId) : (t.batchId ?? null),
+    relatedModule: t.relatedModule ?? "cultivation",
+    recurrenceType: (t.recurrenceType ?? "none") as OperationalTaskRecurrence,
+    recurrenceInterval: t.recurrenceInterval ?? null,
+    completedAt: t.fechaCompletada ?? t.completedAt ?? null,
+    completedByName: t.completedByName ?? null,
+    notes: t.observaciones ?? t.notes ?? null,
+    bed: t.camilla
+      ? { id: String(t.camilla.id), name: t.camilla.nombre ?? t.camilla.name ?? "", code: t.camilla.codigo ?? t.camilla.code ?? "" }
+      : (t.bed ?? null),
+    plant: t.planta
+      ? { id: String(t.planta.id), internalCode: t.planta.codigoPlanta ?? t.planta.internalCode ?? "", bedPosition: t.planta.posicionCamilla ?? t.planta.bedPosition ?? 0 }
+      : (t.plant ?? null),
+  };
+}
+
 function queryFromFilters(filters: OperationalTaskFilters) {
   return new URLSearchParams(
     Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== undefined && value !== "")),
@@ -72,7 +103,8 @@ export async function getOperationalTasks(filters: OperationalTaskFilters = {}):
   return withMockFallback(
     async () => {
       const query = queryFromFilters(filters);
-      return apiRequest<OperationalTask[]>(`/cultivation/operational-tasks${query ? `?${query}` : ""}`);
+      const raw = await apiRequest<unknown[]>(`/cultivation/operational-tasks${query ? `?${query}` : ""}`);
+      return raw.map(mapApiTask);
     },
     () => mockTasks,
   );
@@ -81,10 +113,10 @@ export async function getOperationalTasks(filters: OperationalTaskFilters = {}):
 export async function createOperationalTask(payload: CreateOperationalTaskPayload): Promise<OperationalTask> {
   return withMockFallback(
     async () =>
-      apiRequest<OperationalTask>("/cultivation/operational-tasks", {
+      mapApiTask(await apiRequest<unknown>("/cultivation/operational-tasks", {
         method: "POST",
         body: JSON.stringify(payload),
-      }),
+      })),
     () => {
       const task: OperationalTask = { ...payload, id: `task-${Date.now()}` };
       mockTasks.unshift(task);

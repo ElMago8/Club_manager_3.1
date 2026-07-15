@@ -164,22 +164,26 @@ function OperationalCalendarPage() {
       setMessage("Las tareas criticas requieren descripcion.");
       return;
     }
-    await createOperationalTask({
-      ...form,
-      description: form.description || undefined,
-      dueTime: form.dueTime || undefined,
-      assignedToName: form.assignedToName || undefined,
-      bedId: form.bedId === "none" ? undefined : form.bedId,
-      plantId: form.plantId === "none" ? undefined : form.plantId,
-      batchId: form.batchId || undefined,
-      relatedModule: form.plantId !== "none" ? "plant" : form.bedId !== "none" ? "bed" : "cultivation",
-      recurrenceType: form.recurrenceType as "none",
-      recurrenceInterval: undefined,
-      notes: form.notes || undefined,
-    });
-    setForm(emptyForm);
-    setMessage("Tarea creada correctamente.");
-    await loadData();
+    try {
+      await createOperationalTask({
+        ...form,
+        description: form.description || undefined,
+        dueTime: form.dueTime || undefined,
+        assignedToName: form.assignedToName || undefined,
+        bedId: form.bedId === "none" ? undefined : form.bedId,
+        plantId: form.plantId === "none" ? undefined : form.plantId,
+        batchId: form.batchId || undefined,
+        relatedModule: form.plantId !== "none" ? "plant" : form.bedId !== "none" ? "bed" : "cultivation",
+        recurrenceType: form.recurrenceType as "none",
+        recurrenceInterval: undefined,
+        notes: form.notes || undefined,
+      });
+      setForm(emptyForm);
+      setMessage("Tarea creada correctamente.");
+      await loadData();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Error al crear la tarea.");
+    }
   }
 
   function relatedLabel(task: OperationalTask) {
@@ -264,7 +268,11 @@ function OperationalCalendarPage() {
                 <Label>Planta</Label>
                 <Select value={form.plantId} onValueChange={(plantId) => setForm({ ...form, plantId })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="none">Sin planta</SelectItem>{plants.filter((plant) => form.bedId === "none" || plant.bedId === form.bedId).map((plant) => <SelectItem key={plant.id} value={plant.id}>{plant.internalCode}</SelectItem>)}</SelectContent>
+                  <SelectContent><SelectItem value="none">Sin planta</SelectItem>{plants.filter((plant) => {
+                    if (form.bedId === "none") return true;
+                    const rawId = plant.bedId?.replace(/^(camilla|clonador)-/, "") ?? "";
+                    return rawId === form.bedId;
+                  }).map((plant) => <SelectItem key={plant.id} value={plant.id}>{plant.internalCode}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-2 sm:col-span-2"><Label>Notas</Label><Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
