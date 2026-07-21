@@ -5,6 +5,7 @@ import {
   BarChart3,
   BoxIcon,
   ClipboardList,
+  Eye,
   FlaskConical,
   Layers,
   MoreVertical,
@@ -62,6 +63,8 @@ import {
   deleteProducto,
   getProductos,
 } from "@/services/productService";
+import { getGenetics } from "@/services/geneticsService";
+import type { Genetics } from "@/types/cultivation";
 import {
   createLoteProducto,
   descartarLote,
@@ -233,6 +236,7 @@ type ProductoForm = {
   nombre: string;
   tipoProducto: TipoProducto;
   unidadMedida: UnidadMedida;
+  cantidad: string;
   categoriaProductoId: string;
   descripcion: string;
   requiereLote: boolean;
@@ -253,6 +257,8 @@ interface TabProductosConfig {
   mostrarSelectorTipo?: boolean;
   /** Mostrar checkboxes de trazabilidad */
   mostrarTrazabilidad?: boolean;
+  /** Mostrar campo cantidad en formulario y columna en tabla */
+  mostrarCantidad?: boolean;
   requiereLoteDefault?: boolean;
   requiereTrazabilidadDefault?: boolean;
   unidadDefault?: UnidadMedida;
@@ -277,6 +283,7 @@ function TabProductos({
     labelEntidad,
     mostrarSelectorTipo = true,
     mostrarTrazabilidad = true,
+    mostrarCantidad = false,
     requiereLoteDefault = false,
     requiereTrazabilidadDefault = false,
     unidadDefault = "gramos",
@@ -287,6 +294,7 @@ function TabProductos({
     nombre: "",
     tipoProducto: tipoDefault,
     unidadMedida: unidadDefault,
+    cantidad: "",
     categoriaProductoId: "",
     descripcion: "",
     requiereLote: requiereLoteDefault,
@@ -298,6 +306,7 @@ function TabProductos({
   const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Producto | null>(null);
+  const [viewTarget, setViewTarget] = useState<Producto | null>(null);
   const [form, setForm] = useState<ProductoForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [confirmInactivar, setConfirmInactivar] = useState<Producto | null>(null);
@@ -329,6 +338,7 @@ function TabProductos({
       nombre: p.nombre,
       tipoProducto: p.tipoProducto,
       unidadMedida: p.unidadMedida,
+      cantidad: p.cantidad != null ? String(p.cantidad) : "",
       categoriaProductoId: p.categoriaProductoId ? String(p.categoriaProductoId) : "",
       descripcion: p.descripcion ?? "",
       requiereLote: p.requiereLote,
@@ -345,11 +355,13 @@ function TabProductos({
     }
     setSaving(true);
     try {
+      const parsedCantidad = form.cantidad !== "" ? parseFloat(form.cantidad) : null;
       const payload: CreateProductoPayload = {
         codigoProducto: form.codigoProducto,
         nombre: form.nombre,
         tipoProducto: form.tipoProducto,
         unidadMedida: form.unidadMedida,
+        cantidad: mostrarCantidad && parsedCantidad != null && !isNaN(parsedCantidad) ? parsedCantidad : null,
         categoriaProductoId: form.categoriaProductoId ? Number(form.categoriaProductoId) : null,
         descripcion: form.descripcion || null,
         requiereLote: mostrarTrazabilidad ? form.requiereLote : false,
@@ -404,10 +416,73 @@ function TabProductos({
     }
   }
 
-  const colSpan = mostrarSelectorTipo ? 7 : 6;
+  const colSpan = (mostrarSelectorTipo ? 7 : 6) + (mostrarCantidad ? 1 : 0);
 
   return (
     <div className="space-y-4">
+      {/* Modal ver detalle */}
+      <Dialog open={Boolean(viewTarget)} onOpenChange={(o) => { if (!o) setViewTarget(null); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Detalle del {labelEntidad}</DialogTitle>
+          </DialogHeader>
+          {viewTarget && (
+            <div className="grid gap-3 py-2 text-sm">
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-muted-foreground">Código</span>
+                <span className="font-mono">{viewTarget.codigoProducto}</span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-muted-foreground">Nombre</span>
+                <span className="font-medium">{viewTarget.nombre}</span>
+              </div>
+              {mostrarSelectorTipo && (
+                <div className="flex justify-between border-b pb-2">
+                  <span className="text-muted-foreground">Tipo</span>
+                  <span>{TIPO_LABEL[viewTarget.tipoProducto]}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-muted-foreground">Unidad</span>
+                <span className="capitalize">{viewTarget.unidadMedida}</span>
+              </div>
+              {mostrarCantidad && (
+                <div className="flex justify-between border-b pb-2">
+                  <span className="text-muted-foreground">Cantidad</span>
+                  <span>{viewTarget.cantidad ?? "—"}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-muted-foreground">Categoría</span>
+                <span>{viewTarget.categoria?.nombre ?? "—"}</span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-muted-foreground">Estado</span>
+                <Badge
+                  variant="outline"
+                  className={
+                    viewTarget.estado === "activo"
+                      ? "border-emerald-200 bg-emerald-500/10 text-emerald-700"
+                      : "border-slate-200 bg-slate-100/50 text-slate-400"
+                  }
+                >
+                  {viewTarget.estado === "activo" ? "Activo" : "Inactivo"}
+                </Badge>
+              </div>
+              {viewTarget.descripcion && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Descripción</span>
+                  <span>{viewTarget.descripcion}</span>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewTarget(null)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal confirmar inactivar */}
       <Dialog open={Boolean(confirmInactivar)} onOpenChange={(o) => { if (!o) setConfirmInactivar(null); }}>
         <DialogContent className="sm:max-w-[400px]">
@@ -482,6 +557,7 @@ function TabProductos({
               <TableHead>Nombre</TableHead>
               {mostrarSelectorTipo && <TableHead>Tipo</TableHead>}
               <TableHead>Unidad</TableHead>
+              {mostrarCantidad && <TableHead>Cantidad</TableHead>}
               <TableHead>Categoría</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="w-24 text-right">Acciones</TableHead>
@@ -501,6 +577,7 @@ function TabProductos({
                   <TableCell className="font-medium">{p.nombre}</TableCell>
                   {mostrarSelectorTipo && <TableCell>{TIPO_LABEL[p.tipoProducto]}</TableCell>}
                   <TableCell className="capitalize">{p.unidadMedida}</TableCell>
+                  {mostrarCantidad && <TableCell>{p.cantidad ?? "—"}</TableCell>}
                   <TableCell>{p.categoria?.nombre ?? "—"}</TableCell>
                   <TableCell>
                     <Badge
@@ -522,6 +599,10 @@ function TabProductos({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setViewTarget(p)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          Ver
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => openEdit(p)}>
                           <Pencil className="mr-2 h-4 w-4" />
                           Editar
@@ -614,10 +695,24 @@ function TabProductos({
                   <SelectContent>
                     <SelectItem value="gramos">Gramos</SelectItem>
                     <SelectItem value="mililitros">Mililitros</SelectItem>
+                    <SelectItem value="litros">Litros</SelectItem>
                     <SelectItem value="unidades">Unidades</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              {mostrarCantidad && (
+                <div className="space-y-1">
+                  <Label>Cantidad</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    placeholder="0"
+                    value={form.cantidad}
+                    onChange={(e) => setForm((f) => ({ ...f, cantidad: e.target.value }))}
+                  />
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -698,6 +793,7 @@ type LoteForm = {
   codigoLoteProducto: string;
   productoId: string;
   ubicacionStockId: string;
+  geneticaId: string;
   cantidadInicial: string;
   cantidadDisponible: string;
   unidadMedida: UnidadMedida;
@@ -711,6 +807,7 @@ const EMPTY_LOTE_FORM: LoteForm = {
   codigoLoteProducto: "",
   productoId: "",
   ubicacionStockId: "",
+  geneticaId: "",
   cantidadInicial: "0",
   cantidadDisponible: "0",
   unidadMedida: "gramos",
@@ -724,11 +821,13 @@ function TabLotes({
   lotes,
   productos,
   ubicaciones,
+  genetics,
   onRefresh,
 }: {
   lotes: LoteProducto[];
   productos: Producto[];
   ubicaciones: UbicacionStock[];
+  genetics: Genetics[];
   onRefresh: () => void;
 }) {
   const [search, setSearch] = useState("");
@@ -750,6 +849,18 @@ function TabLotes({
     });
   }, [lotes, search, filterEstado]);
 
+  const productoMap = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
+
+  function selectedProductType(productoId: string): TipoProducto | null {
+    if (!productoId) return null;
+    return productoMap.get(Number(productoId))?.tipoProducto ?? null;
+  }
+
+  function isLoteGeneticaProducto(l: LoteProducto) {
+    const tipo = productoMap.get(l.productoId)?.tipoProducto;
+    return tipo === "flor" || tipo === "aceite";
+  }
+
   function openCreate() {
     setEditTarget(null);
     setForm({ ...EMPTY_LOTE_FORM, codigoLoteProducto: generateCodigo("PRODLOT") });
@@ -762,6 +873,7 @@ function TabLotes({
       codigoLoteProducto: l.codigoLoteProducto,
       productoId: String(l.productoId),
       ubicacionStockId: l.ubicacionStockId ? String(l.ubicacionStockId) : "",
+      geneticaId: l.geneticaId ? String(l.geneticaId) : "",
       cantidadInicial: String(l.cantidadInicial),
       cantidadDisponible: String(l.cantidadDisponible),
       unidadMedida: l.unidadMedida,
@@ -786,6 +898,7 @@ function TabLotes({
         codigoLoteProducto: form.codigoLoteProducto,
         productoId: Number(form.productoId),
         ubicacionStockId: form.ubicacionStockId ? Number(form.ubicacionStockId) : null,
+        geneticaId: form.geneticaId ? Number(form.geneticaId) : null,
         cantidadInicial: cantInicial,
         cantidadDisponible: cantDisponible,
         unidadMedida: form.unidadMedida,
@@ -858,6 +971,7 @@ function TabLotes({
             <TableRow>
               <TableHead>Código lote</TableHead>
               <TableHead>Producto</TableHead>
+              <TableHead>Genética</TableHead>
               <TableHead>Disponible</TableHead>
               <TableHead>Inicial</TableHead>
               <TableHead>Ubicación</TableHead>
@@ -869,7 +983,7 @@ function TabLotes({
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
+                <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
                   No hay lotes{search || filterEstado !== "todos" ? " que coincidan" : " registrados"}.
                 </TableCell>
               </TableRow>
@@ -878,6 +992,9 @@ function TabLotes({
                 <TableRow key={l.id} className={l.estado === "descartado" ? "opacity-50" : undefined}>
                   <TableCell className="font-mono text-xs text-muted-foreground">{l.codigoLoteProducto}</TableCell>
                   <TableCell className="font-medium">{l.producto?.nombre ?? `Producto #${l.productoId}`}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {isLoteGeneticaProducto(l) ? (l.genetica?.nombre ?? "—") : "—"}
+                  </TableCell>
                   <TableCell>
                     {l.cantidadDisponible} <span className="text-xs text-muted-foreground">{l.unidadMedida}</span>
                   </TableCell>
@@ -958,6 +1075,23 @@ function TabLotes({
                 </Select>
               </div>
             </div>
+            {(selectedProductType(form.productoId) === "flor" || selectedProductType(form.productoId) === "aceite") && (
+              <div className="space-y-1">
+                <Label>Genética</Label>
+                <Select
+                  value={form.geneticaId || "_none"}
+                  onValueChange={(v) => setForm((f) => ({ ...f, geneticaId: v === "_none" ? "" : v }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Sin genética" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">Sin genética</SelectItem>
+                    {genetics.map((g) => (
+                      <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label>Cant. inicial</Label>
@@ -989,6 +1123,7 @@ function TabLotes({
                   <SelectContent>
                     <SelectItem value="gramos">Gramos</SelectItem>
                     <SelectItem value="mililitros">Mililitros</SelectItem>
+                    <SelectItem value="litros">Litros</SelectItem>
                     <SelectItem value="unidades">Unidades</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1310,23 +1445,26 @@ function CatalogPage() {
   const [lotes, setLotes] = useState<LoteProducto[]>([]);
   const [ubicaciones, setUbicaciones] = useState<UbicacionStock[]>([]);
   const [categorias, setCategorias] = useState<CategoriaProducto[]>([]);
+  const [genetics, setGenetics] = useState<Genetics[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [sumRes, prodRes, lotesRes, ubRes, catRes] = await Promise.all([
+      const [sumRes, prodRes, lotesRes, ubRes, catRes, genRes] = await Promise.all([
         getProductBatchSummary(),
         getProductos(),
         getLotesProducto(),
         getUbicaciones(),
         getCategorias(),
+        getGenetics(),
       ]);
       setSummary(sumRes);
       setProductos(prodRes);
       setLotes(lotesRes);
       setUbicaciones(ubRes);
       setCategorias(catRes);
+      setGenetics(genRes);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudieron cargar los datos de productos.");
     } finally {
@@ -1407,6 +1545,7 @@ function CatalogPage() {
               labelEntidad: "insumo",
               mostrarSelectorTipo: false,
               mostrarTrazabilidad: true,
+              mostrarCantidad: true,
               requiereLoteDefault: false,
               requiereTrazabilidadDefault: false,
               unidadDefault: "unidades",
@@ -1427,6 +1566,7 @@ function CatalogPage() {
               labelEntidad: "artículo",
               mostrarSelectorTipo: false,
               mostrarTrazabilidad: false,
+              mostrarCantidad: true,
               requiereLoteDefault: false,
               requiereTrazabilidadDefault: false,
               unidadDefault: "unidades",
@@ -1439,6 +1579,7 @@ function CatalogPage() {
             lotes={lotes}
             productos={productos}
             ubicaciones={ubicaciones}
+            genetics={genetics}
             onRefresh={loadAll}
           />
         </TabsContent>

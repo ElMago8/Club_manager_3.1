@@ -1,7 +1,7 @@
 // Tipos que reflejan los modelos Prisma (IDs numéricos, snake_case mapeado a camelCase).
 
 export type TipoProducto = "flor" | "aceite" | "extracto" | "comestible" | "insumo" | "otro";
-export type UnidadMedida  = "gramos" | "mililitros" | "unidades";
+export type UnidadMedida  = "gramos" | "mililitros" | "unidades" | "litros";
 export type EstadoProducto = "activo" | "inactivo";
 export type EstadoCategoria = "activa" | "inactiva";
 export type EstadoUbicacion = "activa" | "inactiva";
@@ -31,6 +31,7 @@ export interface Producto {
   nombre: string;
   tipoProducto: TipoProducto;
   unidadMedida: UnidadMedida;
+  cantidad?: number | null;
   descripcion: string | null;
   estado: EstadoProducto;
   requiereLote: boolean;
@@ -102,6 +103,7 @@ export type CreateProductoPayload = {
   nombre: string;
   tipoProducto: TipoProducto;
   unidadMedida?: UnidadMedida;
+  cantidad?: number | null;
   descripcion?: string | null;
   estado?: EstadoProducto;
   requiereLote?: boolean;

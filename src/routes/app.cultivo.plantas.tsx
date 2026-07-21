@@ -33,6 +33,36 @@ const PLANT_STATUS_CLASS: Record<PlantStatus, string> = {
   cosechada: "border-violet-200 bg-violet-500/10 text-violet-700",
 };
 
+const PLANT_STATUS_LABEL: Record<PlantStatus, string> = {
+  normal: "Normal",
+  observacion: "Observación",
+  alerta: "Alerta",
+  descartada: "Descartada",
+  cosechada: "Cosechada",
+};
+
+const PLANT_STAGE_CLASS: Record<PlantStage, string> = {
+  vegetativo:  "border-emerald-200 bg-emerald-500/10 text-emerald-700",
+  floracion:   "border-violet-200 bg-violet-500/10 text-violet-700",
+  cosecha:     "border-amber-200 bg-amber-500/10 text-amber-700",
+  secado:      "border-sky-200 bg-sky-500/10 text-sky-700",
+  curado:      "border-teal-200 bg-teal-500/10 text-teal-700",
+  liberado:    "border-emerald-200 bg-emerald-500/10 text-emerald-700",
+  a_limpiar:   "border-slate-200 bg-slate-100/50 text-slate-500",
+  a_reparar:   "border-red-200 bg-red-500/10 text-red-700",
+};
+
+const PLANT_STAGE_LABEL: Record<PlantStage, string> = {
+  vegetativo: "Vegetativo",
+  floracion:  "Floración",
+  cosecha:    "Cosecha",
+  secado:     "Secado",
+  curado:     "Curado",
+  liberado:   "Liberado",
+  a_limpiar:  "A limpiar",
+  a_reparar:  "A reparar",
+};
+
 type SanitaryStatus = NonNullable<Plant["sanitaryStatus"]>;
 
 const SANITARY_STATUS_CLASS: Record<SanitaryStatus, string> = {
@@ -266,9 +296,23 @@ function PlantsPage() {
                     <TableCell>{bedName(plant.bedId)}</TableCell>
                     <TableCell className="font-mono text-xs">{plant.bedPosition}</TableCell>
                     <TableCell className="font-mono text-xs">{motherCode(plant.motherPlantId)}</TableCell>
-                    <TableCell className="capitalize">{plant.stage}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={PLANT_STATUS_CLASS[plant.status]}>{plant.status}</Badge>
+                      <StageSelect
+                        value={plant.stage}
+                        onChange={async (next) => {
+                          setPlants((prev) => prev.map((p) => p.id === plant.id ? { ...p, stage: next } : p));
+                          await updatePlant(plant.id, { stage: next });
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <StatusSelect
+                        value={plant.status}
+                        onChange={async (next) => {
+                          setPlants((prev) => prev.map((p) => p.id === plant.id ? { ...p, status: next } : p));
+                          await updatePlant(plant.id, { status: next });
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       <SanitaryStatusSelect
@@ -360,6 +404,70 @@ function SanitaryStatusSelect({
         <SelectItem value="preventivo">Preventivo</SelectItem>
         <SelectItem value="observacion">En observacion</SelectItem>
         <SelectItem value="critico">Critico</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+function StageSelect({
+  value,
+  onChange,
+}: {
+  value: PlantStage;
+  onChange: (next: PlantStage) => Promise<void>;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  async function handleChange(next: string) {
+    setLoading(true);
+    try {
+      await onChange(next as PlantStage);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Select value={value} onValueChange={handleChange} disabled={loading}>
+      <SelectTrigger className={`h-7 w-[130px] border text-xs font-medium ${PLANT_STAGE_CLASS[value]}`}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {(Object.keys(PLANT_STAGE_LABEL) as PlantStage[]).map((s) => (
+          <SelectItem key={s} value={s}>{PLANT_STAGE_LABEL[s]}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function StatusSelect({
+  value,
+  onChange,
+}: {
+  value: PlantStatus;
+  onChange: (next: PlantStatus) => Promise<void>;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  async function handleChange(next: string) {
+    setLoading(true);
+    try {
+      await onChange(next as PlantStatus);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Select value={value} onValueChange={handleChange} disabled={loading}>
+      <SelectTrigger className={`h-7 w-[130px] border text-xs font-medium ${PLANT_STATUS_CLASS[value]}`}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {(Object.keys(PLANT_STATUS_LABEL) as PlantStatus[]).map((s) => (
+          <SelectItem key={s} value={s}>{PLANT_STATUS_LABEL[s]}</SelectItem>
+        ))}
       </SelectContent>
     </Select>
   );
