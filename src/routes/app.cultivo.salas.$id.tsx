@@ -38,6 +38,10 @@ const SENSOR_OPTIONS: SensorType[] = [
   "otro",
 ];
 
+const POST_CULTIVO_SENSORS: SensorType[] = ["temperatura", "humedad", "otro"];
+const GROUP_A_SET = new Set(["vegetativo", "floracion", "madres", "esquejes"]);
+const GROUP_B_SET = new Set(["secado", "curado"]);
+
 function boolValue(value: boolean): "si" | "no" {
   return value ? "si" : "no";
 }
@@ -64,7 +68,17 @@ function GrowRoomDetailPage() {
   const [form, setForm] = useState<GrowRoomTechnicalConfig | null>(null);
 
   useEffect(() => {
-    if (room) setForm({ ...room.technicalConfig });
+    if (room) {
+      const types = room.type.split(",").map((t) => t.trim());
+      const postCultivo = types.some((t) => GROUP_B_SET.has(t)) && !types.some((t) => GROUP_A_SET.has(t));
+      const config = { ...room.technicalConfig };
+      if (postCultivo) {
+        config.installedSensors = config.installedSensors.filter((s) =>
+          POST_CULTIVO_SENSORS.includes(s as SensorType),
+        ) as SensorType[];
+      }
+      setForm(config);
+    }
   }, [room]);
 
   const sensorLabel = useMemo(
@@ -87,6 +101,10 @@ function GrowRoomDetailPage() {
       </div>
     );
   }
+
+  const roomTypes = room.type.split(",").map((t) => t.trim());
+  const isPostCultivo = roomTypes.some((t) => GROUP_B_SET.has(t)) && !roomTypes.some((t) => GROUP_A_SET.has(t));
+  const editableSensors = isPostCultivo ? POST_CULTIVO_SENSORS : SENSOR_OPTIONS;
 
   async function handleSave() {
     if (!room || !form) return;
@@ -166,11 +184,11 @@ function GrowRoomDetailPage() {
             <CardDescription>Resumen de equipamiento y sensores registrados.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm md:grid-cols-2">
-            <div><p className="text-muted-foreground">Iluminacion</p><p className="uppercase">{room.technicalConfig.lightingType}</p></div>
-            <div><p className="text-muted-foreground">Potencia total</p><p className="font-mono">{room.technicalConfig.installedPowerWatts} W</p></div>
+            {!isPostCultivo && <div><p className="text-muted-foreground">Iluminacion</p><p className="uppercase">{room.technicalConfig.lightingType}</p></div>}
+            {!isPostCultivo && <div><p className="text-muted-foreground">Potencia total</p><p className="font-mono">{room.technicalConfig.installedPowerWatts} W</p></div>}
             <div><p className="text-muted-foreground">Ventilacion</p><p>{room.technicalConfig.ventilationSystem ?? "-"}</p></div>
             <div><p className="text-muted-foreground">Extraccion</p><p>{room.technicalConfig.extractionSystem ?? "-"}</p></div>
-            <div><p className="text-muted-foreground">Riego</p><p className="capitalize">{room.technicalConfig.irrigationSystem}</p></div>
+            {!isPostCultivo && <div><p className="text-muted-foreground">Riego</p><p className="capitalize">{room.technicalConfig.irrigationSystem}</p></div>}
             <div><p className="text-muted-foreground">Aire acondicionado</p><p>{displayBool(room.technicalConfig.hasAirConditioning)}</p></div>
             <div><p className="text-muted-foreground">Deshumidificador</p><p>{displayBool(room.technicalConfig.hasDehumidifier)}</p></div>
             <div><p className="text-muted-foreground">Sensores</p><p>{sensorLabel}</p></div>
@@ -216,31 +234,35 @@ function GrowRoomDetailPage() {
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Tipo de iluminacion</Label>
-              <Select
-                value={form.lightingType}
-                onValueChange={(value) => setForm({ ...form, lightingType: value as LightingType })}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="led">LED</SelectItem>
-                  <SelectItem value="hps">HPS</SelectItem>
-                  <SelectItem value="cmh">CMH</SelectItem>
-                  <SelectItem value="mixta">Mixta</SelectItem>
-                  <SelectItem value="otra">Otra</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Potencia total instalada</Label>
-              <Input
-                type="number"
-                min={0}
-                value={form.installedPowerWatts}
-                onChange={(event) => setForm({ ...form, installedPowerWatts: Number(event.target.value) })}
-              />
-            </div>
+            {!isPostCultivo && (
+              <div className="space-y-2">
+                <Label>Tipo de iluminacion</Label>
+                <Select
+                  value={form.lightingType}
+                  onValueChange={(value) => setForm({ ...form, lightingType: value as LightingType })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="led">LED</SelectItem>
+                    <SelectItem value="hps">HPS</SelectItem>
+                    <SelectItem value="cmh">CMH</SelectItem>
+                    <SelectItem value="mixta">Mixta</SelectItem>
+                    <SelectItem value="otra">Otra</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {!isPostCultivo && (
+              <div className="space-y-2">
+                <Label>Potencia total instalada</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.installedPowerWatts}
+                  onChange={(event) => setForm({ ...form, installedPowerWatts: Number(event.target.value) })}
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Sistema de ventilacion</Label>
               <Input
@@ -255,20 +277,22 @@ function GrowRoomDetailPage() {
                 onChange={(event) => setForm({ ...form, extractionSystem: event.target.value })}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Sistema de riego</Label>
-              <Select
-                value={form.irrigationSystem}
-                onValueChange={(value) => setForm({ ...form, irrigationSystem: value as IrrigationSystem })}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="manual">Manual</SelectItem>
-                  <SelectItem value="automatico">Automatico</SelectItem>
-                  <SelectItem value="mixto">Mixto</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!isPostCultivo && (
+              <div className="space-y-2">
+                <Label>Sistema de riego</Label>
+                <Select
+                  value={form.irrigationSystem}
+                  onValueChange={(value) => setForm({ ...form, irrigationSystem: value as IrrigationSystem })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">Manual</SelectItem>
+                    <SelectItem value="automatico">Automatico</SelectItem>
+                    <SelectItem value="mixto">Mixto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Aire acondicionado</Label>
@@ -302,7 +326,7 @@ function GrowRoomDetailPage() {
           <div className="space-y-2">
             <Label>Sensores instalados</Label>
             <div className="flex flex-wrap gap-2">
-              {SENSOR_OPTIONS.map((sensor) => {
+              {editableSensors.map((sensor) => {
                 const active = form.installedSensors.includes(sensor);
                 return (
                   <Button
