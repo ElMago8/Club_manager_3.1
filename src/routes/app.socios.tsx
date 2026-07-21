@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { AlertTriangle, CheckCircle2, ExternalLink, Plus, Search, ShieldAlert, UploadCloud, UserCheck, UserPlus, Users, XCircle } from "lucide-react";
+import { CheckCircle2, ExternalLink, Plus, Search, ShieldAlert, UploadCloud, UserCheck, UserPlus, Users, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -209,7 +208,6 @@ function SociosPage() {
 
   const [selected, setSelected] = useState<Member | null>(null);
   const [formTarget, setFormTarget] = useState<Member | "new" | null>(null);
-  const [showQuotaCol, setShowQuotaCol] = useState(false);
 
   useEffect(() => {
     void getMembers()
@@ -228,7 +226,7 @@ function SociosPage() {
   }, []);
 
   const stats = useMemo(() => {
-    let active = 0, pending = 0, expiring = 0, nearQuota = 0;
+    let active = 0, pending = 0, expiring = 0;
     for (const m of members) {
       if (m.status === "active") active++;
       if (m.status === "pending") pending++;
@@ -236,9 +234,8 @@ function SociosPage() {
       const dMed = daysUntil(m.medicalDocumentExpirationDate);
       const min = Math.min(dCred ?? 999, dMed ?? 999);
       if (min >= 0 && min <= 30) expiring++;
-      if (m.status === "active" && m.monthlyQuotaGrams > 0 && m.currentMonthUsageGrams / m.monthlyQuotaGrams >= 0.8) nearQuota++;
     }
-    return { total: members.length, active, pending, expiring, nearQuota };
+    return { total: members.length, active, pending, expiring };
   }, [members]);
 
   const filtered = useMemo(() => {
@@ -309,7 +306,7 @@ function SociosPage() {
       ) : null}
 
       <div className="rounded-xl border border-border bg-card p-3 shadow-xs">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {[
             {
               label: "Total de socios",
@@ -342,14 +339,6 @@ function SociosPage() {
               accent: "bg-yellow-500",
               panel: "bg-yellow-500/10",
               iconClass: "text-yellow-600 dark:text-yellow-400",
-            },
-            {
-              label: "Cupos al limite",
-              value: stats.nearQuota,
-              icon: AlertTriangle,
-              accent: "bg-red-500",
-              panel: "bg-red-500/10",
-              iconClass: "text-red-600 dark:text-red-400",
             },
           ].map((card) => {
             const Icon = card.icon;
@@ -403,17 +392,6 @@ function SociosPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id="show-quota"
-          checked={showQuotaCol}
-          onCheckedChange={(v) => setShowQuotaCol(!!v)}
-        />
-        <label htmlFor="show-quota" className="text-sm text-muted-foreground cursor-pointer select-none">
-          Mostrar columna Cupo mensual estimado
-        </label>
-      </div>
-
       {loading ? (
         <div className="rounded-lg border border-border bg-card py-16 text-center">
           <p className="text-sm text-muted-foreground">Cargando socios...</p>
@@ -434,9 +412,6 @@ function SociosPage() {
                 <SortHead label="Teléfono"             sortKey="phone"              col={sCol} dir={sDir} onSort={sort} className="text-center" />
                 <SortHead label="Estado"               sortKey="status"             col={sCol} dir={sDir} onSort={sort} className="text-center" />
                 <TableHead className="text-center">REPROCANN</TableHead>
-                {showQuotaCol && (
-                  <SortHead label="Cupo mensual estimado" sortKey="monthlyQuotaGrams" col={sCol} dir={sDir} onSort={sort} className="text-center" />
-                )}
                 <TableHead className="text-center">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -461,11 +436,6 @@ function SociosPage() {
                     <TableCell className="text-center">
                       <Badge variant="outline" className={doc.class}>{doc.label}</Badge>
                     </TableCell>
-                    {showQuotaCol && (
-                      <TableCell className="font-mono text-xs text-center">
-                        {m.monthlyQuotaGrams ? `${m.monthlyQuotaGrams} g` : "-"}
-                      </TableCell>
-                    )}
                     <TableCell className="text-center">
                       <div className="flex justify-center gap-1">
                         <Button
@@ -670,15 +640,6 @@ function MemberFormSheet({ target, onClose, onSaved, onDeleted, onError }: FormS
             <Field label="Provincia">
               <Input value={form.provincia ?? ""} onChange={(e) => set("provincia", e.target.value)} />
             </Field>
-            <Field label="Cupo mensual estimado (g)">
-              <Input
-                type="number"
-                min={0}
-                step={5}
-                value={form.cupoMensualGramos ?? ""}
-                onChange={(e) => set("cupoMensualGramos", e.target.value ? Number(e.target.value) : undefined)}
-              />
-            </Field>
             <Field label="Observaciones" className="sm:col-span-2">
               <Textarea
                 value={form.observaciones ?? ""}
@@ -812,10 +773,6 @@ function MemberDetailSheet({ member, onClose, onEdit, onDeactivate, onError }: D
     );
   }
 
-  const usagePct = member.monthlyQuotaGrams > 0
-    ? Math.round((member.currentMonthUsageGrams / member.monthlyQuotaGrams) * 100)
-    : 0;
-
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
       <SheetContent className="w-[480px] sm:max-w-[520px] overflow-y-auto">
@@ -835,20 +792,6 @@ function MemberDetailSheet({ member, onClose, onEdit, onDeactivate, onError }: D
             <Row label="Email">{member.email ?? "-"}</Row>
             {member.localidad ? <Row label="Localidad">{member.localidad}{member.provincia ? `, ${member.provincia}` : ""}</Row> : null}
             <Row label="Alta">{fmtDate(member.registrationDate)}</Row>
-          </section>
-
-          <section className="space-y-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cupo</h3>
-            <Row label="Cupo mensual estimado" mono>{member.monthlyQuotaGrams ? `${member.monthlyQuotaGrams} g` : "-"}</Row>
-            <Row label="Uso del mes" mono>{`${member.currentMonthUsageGrams} g · ${usagePct}%`}</Row>
-            {member.monthlyQuotaGrams > 0 ? (
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className={`h-full ${usagePct >= 80 ? "bg-amber-500" : "bg-emerald-500"}`}
-                  style={{ width: `${Math.min(100, usagePct)}%` }}
-                />
-              </div>
-            ) : null}
           </section>
 
           {member.notes ? (

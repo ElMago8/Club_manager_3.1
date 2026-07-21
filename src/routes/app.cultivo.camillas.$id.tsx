@@ -5,6 +5,7 @@ import { BulkCreatePlantsDialog } from "@/components/cultivation/BulkCreatePlant
 import { DeleteConfirmDialog } from "@/components/cultivation/DeleteConfirmDialog";
 import { RelationshipWarning } from "@/components/cultivation/RelationshipWarning";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,7 +35,7 @@ import { deleteGrowBed, getGrowBedById, getGrowBedOccupancy, updateGrowBedCapaci
 import { getGrowRoomById } from "@/services/growRoomService";
 import { getMeasurements } from "@/services/measurementService";
 import { getMotherPlants } from "@/services/motherPlantService";
-import { getPlantsByBed, updatePlantStage, updatePlantStatus } from "@/services/plantService";
+import { deletePlant, getPlantsByBed, updatePlantStage, updatePlantStatus } from "@/services/plantService";
 import type {
   BedStatus,
   CultivationMeasurement,
@@ -182,6 +183,9 @@ function GrowBedDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState("");
   const [gridStage, setGridStage] = useState<PlantStage | null>(null);
+  const [selectedPlantIds, setSelectedPlantIds] = useState<Set<string>>(new Set());
+  const [confirmDeletePlants, setConfirmDeletePlants] = useState<Plant[]>([]);
+  const [deletingPlants, setDeletingPlants] = useState(false);
 
   async function loadData() {
     const nextBed = await getGrowBedById(id);
@@ -327,6 +331,22 @@ function GrowBedDetailPage() {
     setSelectedPlant(null);
     setQuickNotes("");
     await loadData();
+  }
+
+  async function handleDeleteSelectedPlants() {
+    if (!confirmDeletePlants.length) return;
+    setDeletingPlants(true);
+    try {
+      await Promise.all(confirmDeletePlants.map((p) => deletePlant(p.id)));
+      setSelectedPlantIds(new Set());
+      setConfirmDeletePlants([]);
+      await loadData();
+    } catch (error) {
+      setDeleteMessage(error instanceof Error ? error.message : "No se pudieron eliminar las plantas.");
+      setConfirmDeletePlants([]);
+    } finally {
+      setDeletingPlants(false);
+    }
   }
 
   async function handleDeleteBed() {
@@ -738,6 +758,137 @@ function GrowBedDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Tabla de plantas */}
+      {plants.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Plantas en esta camilla</CardTitle>
+            <CardDescription>Selecciona plantas para eliminarlas.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {selectedPlantIds.size > 0 && (
+              <div className="flex items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+                <span className="text-sm text-destructive font-medium">
+                  {selectedPlantIds.size} planta{selectedPlantIds.size !== 1 ? "s" : ""} seleccionada{selectedPlantIds.size !== 1 ? "s" : ""}
+                </span>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="ml-auto gap-1.5"
+                  onClick={() => setConfirmDeletePlants(plants.filter((p) => selectedPlantIds.has(p.id)))}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Eliminar seleccionadas
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedPlantIds(new Set())}
+                >
+                  Deseleccionar
+                </Button>
+              </div>
+            )}
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10 text-center">
+                      <Checkbox
+                        checked={selectedPlantIds.size === plants.length && plants.length > 0}
+                        onCheckedChange={(checked) =>
+                          setSelectedPlantIds(checked ? new Set(plants.map((p) => p.id)) : new Set())
+                        }
+                      />
+                    </TableHead>
+                    <TableHead>Código</TableHead>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Posición</TableHead>
+                    <TableHead>Etapa</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Genética</TableHead>
+                    <TableHead className="w-10 text-center">Acción</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {plants.map((plant) => (
+                    <TableRow key={plant.id} className={selectedPlantIds.has(plant.id) ? "bg-destructive/5" : ""}>
+                      <TableCell className="text-center">
+                        <Checkbox
+                          checked={selectedPlantIds.has(plant.id)}
+                          onCheckedChange={(checked) => {
+                            const next = new Set(selectedPlantIds);
+                            if (checked) next.add(plant.id); else next.delete(plant.id);
+                            setSelectedPlantIds(next);
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{plant.internalCode}</TableCell>
+                      <TableCell>{plant.plantName ?? "-"}</TableCell>
+                      <TableCell className="font-mono text-xs">#{plant.bedPosition}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={PLANT_STAGE_CLASS[plant.stage]}>
+                          {STAGE_LABEL[plant.stage]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={PLANT_STATUS_CLASS[plant.status]}>
+                          {PLANT_STATUS_LABEL[plant.status]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">{plant.geneticsName ?? "-"}</TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => setConfirmDeletePlants([plant])}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Modal confirmar eliminacion de plantas */}
+      <Dialog open={confirmDeletePlants.length > 0} onOpenChange={(open) => { if (!open) setConfirmDeletePlants([]); }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Eliminar plantas</DialogTitle>
+            <DialogDescription>
+              Esta accion no se puede deshacer. Se eliminaran las siguientes plantas:
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="my-1 space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
+            {confirmDeletePlants.map((p) => (
+              <li key={p.id} className="font-mono text-xs">
+                {p.internalCode}{p.plantName ? ` — ${p.plantName}` : ""}
+                {" "}
+                <span className="text-muted-foreground">(pos. #{p.bedPosition})</span>
+              </li>
+            ))}
+          </ul>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setConfirmDeletePlants([])} disabled={deletingPlants}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleDeleteSelectedPlants()}
+              disabled={deletingPlants}
+            >
+              {deletingPlants ? "Eliminando..." : `Sí, eliminar ${confirmDeletePlants.length === 1 ? "planta" : `${confirmDeletePlants.length} plantas`}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de detalle de planta */}
       <Dialog open={Boolean(detailPlant)} onOpenChange={(open) => { if (!open) setDetailPlant(null); }}>
