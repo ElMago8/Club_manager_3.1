@@ -70,7 +70,6 @@ import {
   getBillingInvoices,
   getBillingMembers,
   markBillingInvoicePaid,
-  updateBillingInvoiceStatus,
   type ArcaStatus,
   type BillingInvoice,
   type BillingMember,
@@ -111,7 +110,7 @@ const ARCA_LABEL: Record<ArcaStatus, string> = {
   rechazado: "Rechazado",
 };
 const COBRO_LABEL: Record<CobroStatus, string> = {
-  pagado: "Pago",
+  pagado: "Pagado",
   impago: "Impago",
   parcial: "Parcial",
   vencido: "Vencido",
@@ -141,8 +140,6 @@ type NewForm = {
   importe: string;
   condicionIva: string;
   observaciones: string;
-  estadoArca: ArcaStatus;
-  estadoCobro: CobroStatus;
 };
 
 type ClienteMode = "socio" | "otro";
@@ -262,8 +259,6 @@ function FacturacionPage() {
     importe: "",
     condicionIva: "consumidor_final",
     observaciones: "",
-    estadoArca: "pendiente",
-    estadoCobro: "impago",
   });
 
   async function loadData() {
@@ -379,8 +374,8 @@ function FacturacionPage() {
         subtotal: importe,
         iva: 0,
         total: newForm.tipo === "nota_credito_c" ? -importe : importe,
-        estado_arca: newForm.estadoArca,
-        estado_cobro: newForm.estadoCobro,
+        estado_arca: "pendiente",
+        estado_cobro: "impago",
         observaciones: newForm.observaciones.trim() || undefined,
         items: [{
           descripcion: newForm.concepto.trim(),
@@ -403,8 +398,6 @@ function FacturacionPage() {
         importe: "",
         condicionIva: "consumidor_final",
         observaciones: "",
-        estadoArca: "pendiente",
-        estadoCobro: "impago",
       });
       setClienteMode("socio");
       setFechaInput(formatDateForInput(today));
@@ -590,24 +583,8 @@ function FacturacionPage() {
                         {showTableTotals ? formatCurrency(c.total) : "••••"}
                       </span>
                     </TableCell>
-                    <TableCell className="px-2 py-2 text-center">
-                      <ArcaStatusSelect
-                        value={c.estadoArca}
-                        onChange={async (next) => {
-                          const updated = await updateBillingInvoiceStatus(c.id, { estado_arca: next });
-                          setComprobantes((prev) => prev.map((item) => item.id === updated.id ? updated : item));
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell className="px-2 py-2 text-center">
-                      <CobroStatusSelect
-                        value={c.estadoCobro}
-                        onChange={async (next) => {
-                          const updated = await updateBillingInvoiceStatus(c.id, { estado_cobro: next });
-                          setComprobantes((prev) => prev.map((item) => item.id === updated.id ? updated : item));
-                        }}
-                      />
-                    </TableCell>
+                    <TableCell className="px-2 py-2 text-center"><Badge variant="outline" className={`px-2 text-[11px] ${ARCA_CLASS[c.estadoArca]}`}>{ARCA_LABEL[c.estadoArca]}</Badge></TableCell>
+                    <TableCell className="px-2 py-2 text-center"><Badge variant="outline" className={`px-2 text-[11px] ${COBRO_CLASS[c.estadoCobro]}`}>{COBRO_LABEL[c.estadoCobro]}</Badge></TableCell>
                     <TableCell className="px-2 py-2 text-center">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -760,32 +737,6 @@ function FacturacionPage() {
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold">Estado ARCA</Label>
-                <Select value={newForm.estadoArca} onValueChange={(v) => setNewForm({ ...newForm, estadoArca: v as ArcaStatus })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pendiente">Pendiente</SelectItem>
-                    <SelectItem value="aprobado">Aprobado</SelectItem>
-                    <SelectItem value="rechazado">Rechazado</SelectItem>
-                    <SelectItem value="observado">Observado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold">Estado cobro</Label>
-                <Select value={newForm.estadoCobro} onValueChange={(v) => setNewForm({ ...newForm, estadoCobro: v as CobroStatus })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="impago">Impago</SelectItem>
-                    <SelectItem value="pagado">Pago</SelectItem>
-                    <SelectItem value="parcial">Parcial</SelectItem>
-                    <SelectItem value="vencido">Vencido</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
             <div className="space-y-1.5">
               <Label htmlFor="nf-obs" className="text-sm font-semibold">Observaciones</Label>
               <Textarea id="nf-obs" rows={2} value={newForm.observaciones} onChange={(e) => setNewForm({ ...newForm, observaciones: e.target.value })} placeholder="Opcional" />
@@ -929,47 +880,5 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={`font-medium ${mono ? "font-mono text-xs" : "text-sm"}`}>{value}</p>
     </div>
-  );
-}
-
-function ArcaStatusSelect({ value, onChange }: { value: ArcaStatus; onChange: (next: ArcaStatus) => Promise<void> }) {
-  const [loading, setLoading] = useState(false);
-  async function handleChange(next: string) {
-    setLoading(true);
-    try { await onChange(next as ArcaStatus); } catch { /* ignore */ } finally { setLoading(false); }
-  }
-  return (
-    <Select value={value} onValueChange={handleChange} disabled={loading}>
-      <SelectTrigger className={`h-7 w-[110px] border text-xs font-medium ${ARCA_CLASS[value]}`}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="pendiente">Pendiente</SelectItem>
-        <SelectItem value="aprobado">Aprobado</SelectItem>
-        <SelectItem value="rechazado">Rechazado</SelectItem>
-        <SelectItem value="observado">Observado</SelectItem>
-      </SelectContent>
-    </Select>
-  );
-}
-
-function CobroStatusSelect({ value, onChange }: { value: CobroStatus; onChange: (next: CobroStatus) => Promise<void> }) {
-  const [loading, setLoading] = useState(false);
-  async function handleChange(next: string) {
-    setLoading(true);
-    try { await onChange(next as CobroStatus); } catch { /* ignore */ } finally { setLoading(false); }
-  }
-  return (
-    <Select value={value} onValueChange={handleChange} disabled={loading}>
-      <SelectTrigger className={`h-7 w-[100px] border text-xs font-medium ${COBRO_CLASS[value]}`}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="impago">Impago</SelectItem>
-        <SelectItem value="pagado">Pago</SelectItem>
-        <SelectItem value="parcial">Parcial</SelectItem>
-        <SelectItem value="vencido">Vencido</SelectItem>
-      </SelectContent>
-    </Select>
   );
 }
