@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -70,7 +70,7 @@ type GrowRoomForm = {
 const initialForm: GrowRoomForm = {
   code: "",
   name: "",
-  type: "vegetativo",
+  type: "",
   status: "activa",
   lightingType: "led",
   installedPowerWatts: "0",
@@ -359,8 +359,24 @@ function NewGrowRoomPage() {
           {/* Card: Tipo de sala */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle>Tipo de sala</CardTitle>
-              <CardDescription>Determina el uso y configura automaticamente las opciones disponibles.</CardDescription>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <CardTitle>Tipo de sala</CardTitle>
+                  <CardDescription>Determina el uso y configura automaticamente las opciones disponibles.</CardDescription>
+                </div>
+                {selectedTypes.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1 text-xs text-muted-foreground shrink-0"
+                    onClick={() => setForm((prev) => ({ ...prev, type: "", installedSensors: [] }))}
+                  >
+                    <X className="h-3 w-3" />
+                    Limpiar selección
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="grid gap-2 rounded-md border border-input bg-background/70 p-3 shadow-sm dark:bg-muted/35 sm:grid-cols-3">

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, ExternalLink, Plus, Search, ShieldAlert, UploadCloud, UserCheck, UserPlus, Users, XCircle } from "lucide-react";
+import { CheckCircle2, ExternalLink, MoreVertical, Plus, Search, ShieldAlert, UploadCloud, UserCheck, UserPlus, Users, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -208,6 +215,8 @@ function SociosPage() {
 
   const [selected, setSelected] = useState<Member | null>(null);
   const [formTarget, setFormTarget] = useState<Member | "new" | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Member | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     void getMembers()
@@ -284,6 +293,20 @@ function SociosPage() {
     const updated = { ...m, status: "inactive" as MemberStatus };
     setMembers((prev) => prev.map((x) => (x.id === m.id ? updated : x)));
     if (selected?.id === m.id) setSelected(updated);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deactivateMember(deleteTarget.id);
+      handleMemberDeleted(deleteTarget);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "No se pudo eliminar el socio.");
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
   }
 
   return (
@@ -419,40 +442,42 @@ function SociosPage() {
               {sorted.map((m) => {
                 const doc = reprocannSummary(m);
                 return (
-                  <TableRow
-                    key={m.id}
-                    className="cursor-pointer hover:bg-muted/40"
-                    onClick={() => handleSelectMember(m)}
-                  >
+                  <TableRow key={m.id} className="hover:bg-muted/40">
                     <TableCell className="font-mono text-xs text-center">{m.credentialCode}</TableCell>
                     <TableCell className="font-medium text-center">{m.fullName}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground text-center">{m.dni ?? "-"}</TableCell>
                     <TableCell className="text-xs text-center">{m.phone ?? "-"}</TableCell>
                     <TableCell className="text-center">
-                      <Badge variant="outline" className={STATUS_CLASS[m.status]}>
-                        {STATUS_LABEL[m.status]}
-                      </Badge>
+                      <MemberStatusSelect
+                        value={m.status}
+                        onChange={async (next) => {
+                          setMembers((prev) => prev.map((x) => x.id === m.id ? { ...x, status: next } : x));
+                          await updateMember(m.id, { estado: next });
+                        }}
+                      />
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge variant="outline" className={doc.class}>{doc.label}</Badge>
                     </TableCell>
                     <TableCell className="text-center">
-                      <div className="flex justify-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); handleSelectMember(m); }}
-                        >
-                          Ver
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); setFormTarget(m); }}
-                        >
-                          Editar
-                        </Button>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleSelectMember(m)}>Ver</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setFormTarget(m)}>Editar</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setDeleteTarget(m)}
+                          >
+                            Eliminar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 );
@@ -461,6 +486,25 @@ function SociosPage() {
           </Table>
         </div>
       )}
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Eliminar socio</DialogTitle>
+            <DialogDescription className="pt-1">
+              Estás por eliminar a{" "}
+              <span className="font-semibold text-foreground">{deleteTarget?.fullName}</span>.
+              Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => void confirmDelete()} disabled={deleting}>
+              {deleting ? "Eliminando..." : "Sí, eliminar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <MemberFormSheet
         target={formTarget}
@@ -1337,6 +1381,41 @@ function PendingDocChecklist({ pending, onChange }: { pending: PendingDocMap; on
         );
       })}
     </div>
+  );
+}
+
+// ─── Selector inline de estado de socio ──────────────────────────────────────
+
+function MemberStatusSelect({
+  value,
+  onChange,
+}: {
+  value: MemberStatus;
+  onChange: (next: MemberStatus) => Promise<void>;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  async function handleChange(next: string) {
+    setLoading(true);
+    try {
+      await onChange(next as MemberStatus);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Select value={value} onValueChange={handleChange} disabled={loading}>
+      <SelectTrigger className={`h-7 w-[120px] border text-xs font-medium ${STATUS_CLASS[value]}`}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="active">Activo</SelectItem>
+        <SelectItem value="pending">Pendiente</SelectItem>
+        <SelectItem value="suspended">Suspendido</SelectItem>
+        <SelectItem value="inactive">Inactivo</SelectItem>
+      </SelectContent>
+    </Select>
   );
 }
 

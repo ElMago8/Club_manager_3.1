@@ -887,9 +887,9 @@ function TabLotes({
 
   async function handleSave() {
     if (!form.productoId) { toast.error("Seleccioná un producto."); return; }
-    const cantInicial = parseFloat(form.cantidadInicial);
-    const cantDisponible = parseFloat(form.cantidadDisponible);
-    if (isNaN(cantInicial) || isNaN(cantDisponible)) { toast.error("Las cantidades deben ser números."); return; }
+    const cantInicial = parseInt(form.cantidadInicial, 10);
+    const cantDisponible = parseInt(form.cantidadDisponible, 10);
+    if (isNaN(cantInicial) || isNaN(cantDisponible)) { toast.error("Las cantidades deben ser números enteros."); return; }
     if (cantDisponible > cantInicial) { toast.error("La cantidad disponible no puede superar la inicial."); return; }
 
     setSaving(true);
@@ -1098,7 +1098,7 @@ function TabLotes({
                 <Input
                   type="number"
                   min="0"
-                  step="0.001"
+                  step="1"
                   value={form.cantidadInicial}
                   onChange={(e) => setForm((f) => ({ ...f, cantidadInicial: e.target.value }))}
                 />
@@ -1108,7 +1108,7 @@ function TabLotes({
                 <Input
                   type="number"
                   min="0"
-                  step="0.001"
+                  step="1"
                   value={form.cantidadDisponible}
                   onChange={(e) => setForm((f) => ({ ...f, cantidadDisponible: e.target.value }))}
                 />
@@ -1506,10 +1506,7 @@ function CatalogPage() {
             <BoxIcon className="h-4 w-4" />
             Lotes
           </TabsTrigger>
-          <TabsTrigger value="ubicaciones" className="gap-2">
-            <Warehouse className="h-4 w-4" />
-            Ubicaciones
-          </TabsTrigger>
+          {/* Ubicaciones oculto: no relevante para demo */}
         </TabsList>
 
         <TabsContent value="productos">
@@ -1584,9 +1581,7 @@ function CatalogPage() {
           />
         </TabsContent>
 
-        <TabsContent value="ubicaciones">
-          <TabUbicaciones ubicaciones={ubicaciones} onRefresh={loadAll} />
-        </TabsContent>
+        {/* TabContent ubicaciones oculto */}
       </Tabs>
     </div>
   );
