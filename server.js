@@ -5,16 +5,12 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const port = Number(process.env.PORT || 3000);
-const clientDir = resolve(__dirname, "dist/client");
+const distDir = resolve(__dirname, "dist");
 
-console.log("CCM Server starting. PORT:", port);
-
-let ssrHandler = null;
-let startupError = null;
-let initialized = false;
+console.log("CCM SPA Server starting. PORT:", port);
 
 const MIME = {
-  ".html": "text/html",
+  ".html": "text/html; charset=utf-8",
   ".js": "application/javascript",
   ".mjs": "application/javascript",
   ".css": "text/css",
@@ -30,13 +26,17 @@ const MIME = {
 };
 
 function tryStaticFile(urlPath, res) {
-  const safePath = resolve(clientDir, "." + urlPath);
-  if (!safePath.startsWith(clientDir)) return false;
+  const safePath = resolve(distDir, "." + urlPath);
+  if (!safePath.startsWith(distDir)) return false;
   try {
     const stat = statSync(safePath);
     if (!stat.isFile()) return false;
     const mime = MIME[extname(safePath)] || "application/octet-stream";
-    res.writeHead(200, { "Content-Type": mime, "Cache-Control": "public, max-age=31536000" });
+    const isImmutable = urlPath.startsWith("/assets/");
+    res.writeHead(200, {
+      "Content-Type": mime,
+      "Cache-Control": isImmutable ? "public, max-age=31536000, immutable" : "no-cache",
+    });
     createReadStream(safePath).pipe(res);
     return true;
   } catch {
@@ -44,81 +44,23 @@ function tryStaticFile(urlPath, res) {
   }
 }
 
-const httpServer = createServer(async (req, res) => {
+const httpServer = createServer((req, res) => {
   const urlPath = new URL(req.url, `http://localhost:${port}`).pathname;
 
-  // Aún inicializando — responder 200 para no romper health checks
-  if (!initialized) {
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end("<html><head><meta http-equiv='refresh' content='2'/></head><body>Iniciando servidor...</body></html>");
-    return;
-  }
+  if (tryStaticFile(urlPath, res)) return;
 
-  // Error al cargar el SSR handler — mostrarlo en el browser para diagnóstico
-  if (startupError) {
-    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end(`CCM STARTUP ERROR:\n\n${startupError.message}\n\n${startupError.stack}`);
-    return;
-  }
-
-  // Servir assets estáticos
-  if (urlPath !== "/" && tryStaticFile(urlPath, res)) return;
-
-  // SSR handler
-  const url = new URL(req.url, `http://localhost:${port}`);
-  const headers = {};
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (value !== undefined) headers[key] = Array.isArray(value) ? value.join(", ") : value;
-  }
-
-  let body = null;
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    body = await new Promise((resolve) => {
-      const chunks = [];
-      req.on("data", (chunk) => chunks.push(chunk));
-      req.on("end", () => resolve(Buffer.concat(chunks)));
-    });
-  }
-
-  const request = new Request(url.href, {
-    method: req.method,
-    headers,
-    ...(body && body.length > 0 ? { body } : {}),
-  });
-
+  // SPA fallback — todas las rutas de navegación sirven index.html
+  const indexPath = resolve(distDir, "index.html");
   try {
-    const response = await ssrHandler.fetch(request);
-    const responseHeaders = {};
-    response.headers.forEach((value, key) => { responseHeaders[key] = value; });
-    res.writeHead(response.status, responseHeaders);
-    if (response.body) {
-      for await (const chunk of response.body) {
-        res.write(chunk);
-      }
-    }
-    res.end();
-  } catch (err) {
-    console.error("SSR error:", err);
-    res.writeHead(500, { "Content-Type": "text/plain" });
-    res.end("SSR Error: " + err.message);
+    statSync(indexPath);
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
+    createReadStream(indexPath).pipe(res);
+  } catch {
+    res.writeHead(503, { "Content-Type": "text/plain" });
+    res.end("App not deployed yet.");
   }
 });
 
-// Primero: el servidor escucha en el puerto (Hostinger puede hacer health check)
 httpServer.listen(port, "0.0.0.0", () => {
-  console.log(`HTTP server bound on http://0.0.0.0:${port}`);
-
-  // Después: cargar el SSR handler en background (no bloquea el puerto)
-  import("./dist/server/server.js")
-    .then((mod) => {
-      ssrHandler = mod.default;
-      initialized = true;
-      console.log("SSR handler loaded. fetch:", typeof ssrHandler?.fetch);
-    })
-    .catch((err) => {
-      console.error("SSR LOAD ERROR:", err.message);
-      console.error(err.stack);
-      startupError = err;
-      initialized = true;
-    });
+  console.log(`CCM SPA Server running on http://0.0.0.0:${port}`);
 });

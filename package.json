@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && node scripts/postbuild.mjs",
+    "build": "echo Pre-built SPA, skipping compilation",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
-    "start": "node dist/start.js",
+    "start": "node server.js",
     "lint": "eslint ."
   },
   "dependencies": {
