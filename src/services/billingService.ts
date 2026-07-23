@@ -229,7 +229,7 @@ export async function markBillingInvoicePaid(id: string): Promise<BillingInvoice
   return mapInvoice(
     await apiRequest<ApiInvoice>(`/billing/invoices/${id}/mark-paid`, {
       method: "POST",
-      body: JSON.stringify({ medioPago: "efectivo", medio_pago: "efectivo" }),
+      body: JSON.stringify({ medio_pago: "efectivo" }),
     }),
   );
 }
@@ -249,31 +249,5 @@ export async function createDebitNote(id: string): Promise<BillingInvoice> {
       method: "POST",
       body: JSON.stringify({}),
     }),
-  );
-}
-
-export async function updateBillingInvoiceStatus(
-  id: string,
-  payload: { estado_arca?: ArcaStatus; estado_cobro?: CobroStatus },
-): Promise<BillingInvoice> {
-  return withMockFallback(
-    async () =>
-      mapInvoice(
-        await apiRequest<ApiInvoice>(`/billing/invoices/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify(payload),
-        }),
-      ),
-    () => {
-      const idx = MOCK_INVOICES.findIndex((inv) => inv.id === id);
-      if (idx === -1) throw new Error("Comprobante no encontrado.");
-      const updated = {
-        ...MOCK_INVOICES[idx],
-        ...(payload.estado_arca && { estadoArca: payload.estado_arca }),
-        ...(payload.estado_cobro && { estadoCobro: payload.estado_cobro }),
-      };
-      MOCK_INVOICES[idx] = updated;
-      return updated;
-    },
   );
 }
