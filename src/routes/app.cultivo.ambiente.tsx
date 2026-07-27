@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { Eye, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DateInput } from "@/components/ui/date-input";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,6 +19,7 @@ import { getGrowRooms } from "@/services/growRoomService";
 import {
   calculateVPDPreview,
   createEnvironmentalLog,
+  deleteEnvironmentalLog,
   getEnvironmentalLogs,
   type EnvironmentalLogFilters,
   type VPDPreview,
@@ -69,6 +72,9 @@ function EnvironmentalPage() {
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [viewLog, setViewLog] = useState<EnvironmentalLog | null>(null);
+  const formCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void Promise.all([getGrowRooms(), getGrowBeds()]).then(([nextRooms, nextBeds]) => {
@@ -145,6 +151,35 @@ function EnvironmentalPage() {
     }
   }
 
+  function handleEditLog(log: EnvironmentalLog) {
+    setForm({
+      roomId: log.roomId,
+      bedId: log.bedId ?? "none",
+      batchId: log.batchId ?? "",
+      date: log.date,
+      time: log.time,
+      airTempC: String(log.airTempC),
+      relativeHumidity: String(log.relativeHumidity),
+      leafTempC: log.leafTempC != null ? String(log.leafTempC) : "",
+      co2ppm: log.co2ppm != null ? String(log.co2ppm) : "",
+      recordedByUserId: log.recordedByUserId ?? "",
+      notes: log.notes ?? "",
+    });
+    formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function handleDeleteLog(id: string) {
+    setDeleting(id);
+    try {
+      await deleteEnvironmentalLog(id);
+      setLogs((current) => current.filter((l) => l.id !== id));
+    } catch {
+      // silencioso — el registro permanece si falla
+    } finally {
+      setDeleting(null);
+    }
+  }
+
   function roomName(roomId: string): string {
     return rooms.find((room) => room.id === roomId)?.name ?? roomId;
   }
@@ -186,7 +221,7 @@ function EnvironmentalPage() {
       </header>
 
       <div className="space-y-4">
-        <Card>
+        <Card ref={formCardRef}>
           <CardHeader>
             <CardTitle>Nuevo registro</CardTitle>
             <CardDescription>El VPD se calcula automaticamente antes de guardar.</CardDescription>
@@ -310,6 +345,7 @@ function EnvironmentalPage() {
                     <SortHead label="HR"      sortKey="relativeHumidity" col={sCol} dir={sDir} onSort={sort} />
                     <SortHead label="Hoja"    sortKey="leafTempC"        col={sCol} dir={sDir} onSort={sort} />
                     <SortHead label="CO2"     sortKey="co2ppm"           col={sCol} dir={sDir} onSort={sort} />
+                    <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -330,6 +366,30 @@ function EnvironmentalPage() {
                         ) : null}
                       </TableCell>
                       <TableCell className="font-mono text-xs">{log.co2ppm ?? "-"} ppm</TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setViewLog(log)}>
+                              <Eye className="mr-2 h-4 w-4" />Ver
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleEditLog(log)}>
+                              <Pencil className="mr-2 h-4 w-4" />Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              disabled={deleting === log.id}
+                              onClick={() => void handleDeleteLog(log.id)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />Borrar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -338,6 +398,40 @@ function EnvironmentalPage() {
           </CardContent>
         </Card>
       </div>
+      <Dialog open={viewLog !== null} onOpenChange={(open) => { if (!open) setViewLog(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Registro ambiental</DialogTitle>
+            <DialogDescription>{viewLog?.date} · {viewLog?.time}</DialogDescription>
+          </DialogHeader>
+          {viewLog && (
+            <div className="grid gap-3 text-sm sm:grid-cols-2">
+              <div><p className="text-xs text-muted-foreground">Sala</p><p>{roomName(viewLog.roomId)}</p></div>
+              <div><p className="text-xs text-muted-foreground">Camilla</p><p>{bedName(viewLog.bedId)}</p></div>
+              <div><p className="text-xs text-muted-foreground">Temperatura ambiente</p><p className="font-mono">{viewLog.airTempC} °C</p></div>
+              <div><p className="text-xs text-muted-foreground">Humedad relativa</p><p className="font-mono">{viewLog.relativeHumidity} %</p></div>
+              {viewLog.leafTempC != null && (
+                <div><p className="text-xs text-muted-foreground">Temperatura de hoja</p><p className="font-mono">{viewLog.leafTempC} °C</p></div>
+              )}
+              {viewLog.co2ppm != null && (
+                <div><p className="text-xs text-muted-foreground">CO2</p><p className="font-mono">{viewLog.co2ppm} ppm</p></div>
+              )}
+              {viewLog.vpdKPa != null && (
+                <div><p className="text-xs text-muted-foreground">VPD</p><p className="font-mono">{viewLog.vpdKPa} kPa</p></div>
+              )}
+              {viewLog.batchId && (
+                <div><p className="text-xs text-muted-foreground">Lote</p><p className="font-mono">{viewLog.batchId}</p></div>
+              )}
+              {viewLog.recordedByUserId && (
+                <div><p className="text-xs text-muted-foreground">Responsable</p><p>{viewLog.recordedByUserId}</p></div>
+              )}
+              {viewLog.notes && (
+                <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">Observaciones</p><p className="whitespace-pre-wrap">{viewLog.notes}</p></div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

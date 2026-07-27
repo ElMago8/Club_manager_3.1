@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useLocation } from "@tanstack/react-router";
 import { ArrowLeft, FlaskConical, Pencil, Plus, SendHorizonal, Timer, TimerOff, Trash2 } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DeleteConfirmDialog } from "@/components/cultivation/DeleteConfirmDialog";
 import { RelationshipWarning } from "@/components/cultivation/RelationshipWarning";
 import { BulkCreateClonadorDialog } from "@/components/cultivation/BulkCreateClonadorDialog";
@@ -25,7 +26,7 @@ import { getMotherPlants } from "@/services/motherPlantService";
 import { apiRequest } from "@/services/cultivationApi";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { getPlants } from "@/services/plantService";
+import { deletePlant, getPlants } from "@/services/plantService";
 import type { BedStatus, CultivationMeasurement, Genetics, GrowBed, GrowRoom, MeasurementStatus, MotherPlant, Plant, PlantOrigin, PlantStage, PlantStatus } from "@/types/cultivation";
 
 export const Route = createFileRoute("/app/cultivo/clonador/$id")({
@@ -110,6 +111,7 @@ function elapsedLabel(startIso: string, now: number): string {
 function ClonadorDetailPage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [clonador, setClonador] = useState<GrowBed | null>(null);
   const [room, setRoom] = useState<GrowRoom | null>(null);
   const [plants, setPlants] = useState<Plant[]>([]);
@@ -131,6 +133,9 @@ function ClonadorDetailPage() {
   const [stopContadorOpen, setStopContadorOpen] = useState(false);
   const [detailPlant, setDetailPlant] = useState<Plant | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [selectedEsquejeIds, setSelectedEsquejeIds] = useState<Set<string>>(new Set());
+  const [confirmDeleteEsquejes, setConfirmDeleteEsquejes] = useState<Plant[]>([]);
+  const [deletingEsquejes, setDeletingEsquejes] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 60_000);
@@ -165,7 +170,7 @@ function ClonadorDetailPage() {
     setMothers(nextMothers);
   }
 
-  useEffect(() => { void loadData(); }, [id]);
+  useEffect(() => { void loadData(); }, [id, location.state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const plantsByPosition = useMemo(() => {
     const m = new Map<number, Plant>();
@@ -184,6 +189,22 @@ function ClonadorDetailPage() {
       else next.add(plantId);
       return next;
     });
+  }
+
+  async function handleDeleteSelectedEsquejes() {
+    if (!confirmDeleteEsquejes.length) return;
+    setDeletingEsquejes(true);
+    try {
+      await Promise.all(confirmDeleteEsquejes.map((p) => deletePlant(p.id)));
+      setSelectedEsquejeIds(new Set());
+      setConfirmDeleteEsquejes([]);
+      await loadData();
+    } catch (err) {
+      setDeleteMessage(err instanceof Error ? err.message : "No se pudieron eliminar los esquejes.");
+      setConfirmDeleteEsquejes([]);
+    } finally {
+      setDeletingEsquejes(false);
+    }
   }
 
   async function handleCapacityUpdate() {
@@ -238,16 +259,15 @@ function ClonadorDetailPage() {
           tipo: "mixed",
           salaCultivoId: Number(clonador.roomId),
           clonadorId: Number(clonador.id),
-          phSustrato: incSubstratePH ? optNum(mSubstratePH) : undefined,
-          ppmSustrato: incSubstratePPM ? optNum(mSubstratePPM) : undefined,
-          phLiquido: incLiquidPH ? optNum(mLiquidPH) : undefined,
-          ppmLiquido: incLiquidPPM ? optNum(mLiquidPPM) : undefined,
+          phSustrato: optNum(mSubstratePH),
+          ppmSustrato: optNum(mSubstratePPM),
+          phLiquido: optNum(mLiquidPH),
+          ppmLiquido: optNum(mLiquidPPM),
           estado: "normal",
           metodo: "manual_meter",
         }),
       });
       setMSubstratePH(""); setMSubstratePPM(""); setMLiquidPH(""); setMLiquidPPM("");
-      setIncSubstratePH(false); setIncSubstratePPM(false); setIncLiquidPH(false); setIncLiquidPPM(false);
       await loadData();
     } catch (err) {
       setMError(err instanceof Error ? err.message : "No se pudo registrar la medición.");
@@ -361,7 +381,7 @@ function ClonadorDetailPage() {
             <CardTitle>Capacidad disponible</CardTitle>
             <CardDescription>Slots ocupados vs. capacidad máxima.</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-3 gap-3">
+          <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div className="rounded-md border p-3">
               <p className="text-xs text-muted-foreground">Máximo</p>
               <p className="font-mono text-2xl font-semibold">{occupancy?.maxPlants ?? clonador.maxPlants}</p>
@@ -469,57 +489,39 @@ function ClonadorDetailPage() {
 
           <div className="rounded-md border p-4 space-y-4">
             <p className="text-sm font-medium">Registrar nueva medición</p>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Checkbox id="incSubstratePH" checked={incSubstratePH} onCheckedChange={(v) => setIncSubstratePH(Boolean(v))} />
-                  <Label htmlFor="incSubstratePH" className="cursor-pointer text-sm">PH sustrato</Label>
-                </div>
-                {incSubstratePH && (
-                  <Input type="number" min="0" max="14" step="0.01" placeholder="0.00"
-                    value={mSubstratePH} onChange={(e) => setMSubstratePH(e.target.value)} />
-                )}
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">PH sustrato</Label>
+                <Input type="number" min="0" max="14" step="0.01" placeholder="—"
+                  value={mSubstratePH} onChange={(e) => setMSubstratePH(e.target.value)} />
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Checkbox id="incSubstratePPM" checked={incSubstratePPM} onCheckedChange={(v) => setIncSubstratePPM(Boolean(v))} />
-                  <Label htmlFor="incSubstratePPM" className="cursor-pointer text-sm">PPM sustrato</Label>
-                </div>
-                {incSubstratePPM && (
-                  <Input type="number" min="0" step="1" placeholder="0"
-                    value={mSubstratePPM} onChange={(e) => setMSubstratePPM(e.target.value)} />
-                )}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">PPM sustrato</Label>
+                <Input type="number" min="0" step="1" placeholder="—"
+                  value={mSubstratePPM} onChange={(e) => setMSubstratePPM(e.target.value)} />
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Checkbox id="incLiquidPH" checked={incLiquidPH} onCheckedChange={(v) => setIncLiquidPH(Boolean(v))} />
-                  <Label htmlFor="incLiquidPH" className="cursor-pointer text-sm">PH líquido</Label>
-                </div>
-                {incLiquidPH && (
-                  <Input type="number" min="0" max="14" step="0.01" placeholder="0.00"
-                    value={mLiquidPH} onChange={(e) => setMLiquidPH(e.target.value)} />
-                )}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">PH líquido</Label>
+                <Input type="number" min="0" max="14" step="0.01" placeholder="—"
+                  value={mLiquidPH} onChange={(e) => setMLiquidPH(e.target.value)} />
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Checkbox id="incLiquidPPM" checked={incLiquidPPM} onCheckedChange={(v) => setIncLiquidPPM(Boolean(v))} />
-                  <Label htmlFor="incLiquidPPM" className="cursor-pointer text-sm">PPM líquido</Label>
-                </div>
-                {incLiquidPPM && (
-                  <Input type="number" min="0" step="1" placeholder="0"
-                    value={mLiquidPPM} onChange={(e) => setMLiquidPPM(e.target.value)} />
-                )}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">PPM líquido</Label>
+                <Input type="number" min="0" step="1" placeholder="—"
+                  value={mLiquidPPM} onChange={(e) => setMLiquidPPM(e.target.value)} />
               </div>
             </div>
 
-            {anyMedicion && (
-              <div className="flex justify-end">
-                <Button className="gap-2" disabled={mSaving} onClick={() => void handleRegisterMedicion()}>
-                  <FlaskConical className="h-4 w-4" />
-                  {mSaving ? "Registrando..." : "Registrar medición"}
-                </Button>
-              </div>
-            )}
+            <div className="flex justify-end">
+              <Button
+                className="gap-2"
+                disabled={mSaving || (!mSubstratePH && !mSubstratePPM && !mLiquidPH && !mLiquidPPM)}
+                onClick={() => void handleRegisterMedicion()}
+              >
+                <FlaskConical className="h-4 w-4" />
+                {mSaving ? "Registrando..." : "Registrar medición"}
+              </Button>
+            </div>
 
             {mError && (
               <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{mError}</p>
@@ -632,6 +634,132 @@ function ClonadorDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Tabla de esquejes */}
+      {plants.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Esquejes en este clonador</CardTitle>
+            <CardDescription>Selecciona esquejes para eliminarlos.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {selectedEsquejeIds.size > 0 && (
+              <div className="flex items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+                <span className="text-sm text-destructive font-medium">
+                  {selectedEsquejeIds.size} esqueje{selectedEsquejeIds.size !== 1 ? "s" : ""} seleccionado{selectedEsquejeIds.size !== 1 ? "s" : ""}
+                </span>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="ml-auto gap-1.5"
+                  onClick={() => setConfirmDeleteEsquejes(plants.filter((p) => selectedEsquejeIds.has(p.id)))}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Eliminar seleccionados
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedEsquejeIds(new Set())}>
+                  Deseleccionar
+                </Button>
+              </div>
+            )}
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10 text-center">
+                      <Checkbox
+                        checked={selectedEsquejeIds.size === plants.length && plants.length > 0}
+                        onCheckedChange={(checked) =>
+                          setSelectedEsquejeIds(checked ? new Set(plants.map((p) => p.id)) : new Set())
+                        }
+                      />
+                    </TableHead>
+                    <TableHead>Código</TableHead>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Posición</TableHead>
+                    <TableHead>Etapa</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Genética</TableHead>
+                    <TableHead className="w-10 text-center">Acción</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {plants.map((plant) => (
+                    <TableRow key={plant.id} className={selectedEsquejeIds.has(plant.id) ? "bg-destructive/5" : ""}>
+                      <TableCell className="text-center">
+                        <Checkbox
+                          checked={selectedEsquejeIds.has(plant.id)}
+                          onCheckedChange={(checked) => {
+                            const next = new Set(selectedEsquejeIds);
+                            if (checked) next.add(plant.id); else next.delete(plant.id);
+                            setSelectedEsquejeIds(next);
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{plant.internalCode}</TableCell>
+                      <TableCell>{plant.plantName ?? "-"}</TableCell>
+                      <TableCell className="font-mono text-xs">#{plant.bedPosition}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={PLANT_STAGE_CLASS[plant.stage]}>
+                          {STAGE_LABEL[plant.stage]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={PLANT_STATUS_CLASS[plant.status]}>
+                          {PLANT_STATUS_LABEL[plant.status]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">{plant.geneticsName ?? "-"}</TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => setConfirmDeleteEsquejes([plant])}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Modal confirmar eliminacion de esquejes */}
+      <Dialog open={confirmDeleteEsquejes.length > 0} onOpenChange={(open) => { if (!open) setConfirmDeleteEsquejes([]); }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Eliminar esquejes</DialogTitle>
+            <DialogDescription>
+              Esta accion no se puede deshacer. Se eliminaran los siguientes esquejes:
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="my-1 space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
+            {confirmDeleteEsquejes.map((p) => (
+              <li key={p.id} className="font-mono text-xs">
+                {p.internalCode}{p.plantName ? ` — ${p.plantName}` : ""}
+                {" "}<span className="text-muted-foreground">(pos. #{p.bedPosition})</span>
+              </li>
+            ))}
+          </ul>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setConfirmDeleteEsquejes([])} disabled={deletingEsquejes}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleDeleteSelectedEsquejes()}
+              disabled={deletingEsquejes}
+            >
+              {deletingEsquejes ? "Eliminando..." : `Sí, eliminar ${confirmDeleteEsquejes.length === 1 ? "esqueje" : `${confirmDeleteEsquejes.length} esquejes`}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Enviar a camilla */}
       <Dialog open={sendOpen} onOpenChange={(o) => { setSendOpen(o); if (!o) setSendError(""); }}>

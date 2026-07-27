@@ -39,10 +39,15 @@ interface ApiMedicion {
   madreId: number | null;
   phLiquido: number | null;
   ppmLiquido: number | null;
+  ecLiquido: number | null;
   phSustrato: number | null;
   ppmSustrato: number | null;
+  ecSustrato: number | null;
   phDrenaje: number | null;
   ppmDrenaje: number | null;
+  ecDrenaje: number | null;
+  tempAgua: number | null;
+  tempSustrato: number | null;
   estado: string;
   metodo: string | null;
   responsable: string | null;
@@ -107,10 +112,15 @@ function mapApiMedicion(item: ApiMedicion): CultivationMeasurement {
     relatedModule,
     liquidPH: item.phLiquido ?? undefined,
     liquidPPM: item.ppmLiquido ?? undefined,
+    liquidEC: item.ecLiquido ?? undefined,
     substratePH: item.phSustrato ?? undefined,
     substratePPM: item.ppmSustrato ?? undefined,
+    substrateEC: item.ecSustrato ?? undefined,
     runoffPH: item.phDrenaje ?? undefined,
     runoffPPM: item.ppmDrenaje ?? undefined,
+    runoffEC: item.ecDrenaje ?? undefined,
+    waterTempC: item.tempAgua ?? undefined,
+    substrateTempC: item.tempSustrato ?? undefined,
     measurementMethod: (item.metodo as MeasurementMethod) ?? undefined,
     responsibleName: item.responsable ?? undefined,
     notes: item.observaciones ?? undefined,
@@ -130,10 +140,15 @@ function toApiPayload(payload: CreateMeasurementPayload) {
     madreId: payload.motherPlantId ? Number(payload.motherPlantId) : undefined,
     phLiquido: payload.liquidPH,
     ppmLiquido: payload.liquidPPM,
+    ecLiquido: payload.liquidEC,
     phSustrato: payload.substratePH,
     ppmSustrato: payload.substratePPM,
+    ecSustrato: payload.substrateEC,
     phDrenaje: payload.runoffPH,
     ppmDrenaje: payload.runoffPPM,
+    ecDrenaje: payload.runoffEC,
+    tempAgua: payload.waterTempC,
+    tempSustrato: payload.substrateTempC,
     estado,
     metodo: payload.measurementMethod,
     responsable: payload.responsibleName,
@@ -160,6 +175,7 @@ function filterMockMeasurements(filters: MeasurementFilters) {
     .filter((item) => {
       if (filters.roomId && item.roomId !== filters.roomId) return false;
       if (filters.bedId && item.bedId !== filters.bedId) return false;
+      if (filters.clonadorId && item.clonadorId !== filters.clonadorId) return false;
       if (filters.plantId && item.plantId !== filters.plantId) return false;
       if (filters.motherPlantId && item.motherPlantId !== filters.motherPlantId) return false;
       if (filters.batchId && item.batchId !== filters.batchId) return false;
@@ -241,6 +257,44 @@ export async function createMeasurement(payload: CreateMeasurementPayload): Prom
       };
       cultivationMeasurements.unshift(measurement);
       return measurement;
+    },
+  );
+}
+
+export async function updateMeasurement(
+  id: string,
+  payload: CreateMeasurementPayload,
+): Promise<CultivationMeasurement> {
+  return withMockFallback(
+    async () =>
+      mapApiMedicion(
+        await apiRequest<ApiMedicion>(`/cultivation/measurements/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(toApiPayload(payload)),
+        }),
+      ),
+    () => {
+      const idx = cultivationMeasurements.findIndex((m) => m.id === id);
+      if (idx === -1) throw new Error("Medición no encontrada");
+      const updated: CultivationMeasurement = {
+        ...payload,
+        id,
+        status: getLocalMeasurementStatus(payload),
+      };
+      cultivationMeasurements[idx] = updated;
+      return updated;
+    },
+  );
+}
+
+export async function deleteMeasurement(id: string): Promise<void> {
+  return withMockFallback(
+    async () => {
+      await apiRequest<void>(`/cultivation/measurements/${id}`, { method: "DELETE" });
+    },
+    () => {
+      const idx = cultivationMeasurements.findIndex((m) => m.id === id);
+      if (idx !== -1) cultivationMeasurements.splice(idx, 1);
     },
   );
 }
